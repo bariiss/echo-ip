@@ -16,6 +16,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip-api .
 
 # Final stage: Run the binary in a minimal Alpine image
 FROM alpine:3.20.3 AS final-api
+
+# Set the working directory
 WORKDIR /app
 
 # Set environment variables for the server
@@ -54,11 +56,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip ./cmd/echo-i
 # Final stage: Run the binary in a minimal image
 FROM alpine:3.20.3 AS final-client
 
+# Set the working directory
+WORKDIR /app
+
 # Set environment variables for the client
 ENV ECHO_IP_SERVICE_URL=https://example.com
 
 # Copy the built binary from the builder stage
-COPY --from=builder-client /app/echo-ip /usr/local/bin/echo-ip
+COPY --from=builder-client /app/echo-ip /app/echo-ip
 
 # Set the entry point to the client binary
-ENTRYPOINT ["/usr/local/bin/echo-ip"]
+ENTRYPOINT ["./echo-ip"]
