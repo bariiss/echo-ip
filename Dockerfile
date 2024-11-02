@@ -1,5 +1,7 @@
 # Use an official Golang image as the build environment
-FROM golang:1.23 as builder-api
+FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-api
+ARG TARGETARCH
+ARG TARGETOS
 
 # Set the working directory
 WORKDIR /app
@@ -15,7 +17,7 @@ COPY . .
 RUN go build -o echo-ip-api .
 
 # Final stage: Run the binary in a minimal image
-FROM debian:buster-slim as final-api
+FROM debian:buster-slim AS final-api
 
 # Set environment variables for the server
 ENV ECHO_IP_PORT=8745
@@ -31,7 +33,9 @@ EXPOSE 8745
 CMD ["echo-ip-api"]
 
 # Use an official Golang image as the build environment
-FROM golang:1.23 as builder-client
+FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-client
+ARG TARGETARCH
+ARG TARGETOS
 
 # Set the working directory
 WORKDIR /app
@@ -47,7 +51,7 @@ COPY . .
 RUN go build -o echo-ip ./cmd/echo-ip
 
 # Final stage: Run the binary in a minimal image
-FROM debian:buster-slim as final-client
+FROM debian:buster-slim AS final-client
 
 # Set environment variables for the client
 ENV ECHO_IP_SERVICE_URL=https://example.com
