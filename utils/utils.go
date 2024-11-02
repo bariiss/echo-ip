@@ -3,8 +3,8 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/bariiss/echo-ip/structs"
-	"github.com/oschwald/geoip2-golang"
+	s "github.com/bariiss/echo-ip/structs"
+	g "github.com/oschwald/geoip2-golang"
 	"io"
 	"log"
 	"net"
@@ -33,7 +33,7 @@ func GetClientIP(r *http.Request) string {
 }
 
 // FetchGeoInfo retrieves the geo information for the given IP address
-func FetchGeoInfo(ip string, cityDB, asnDB *geoip2.Reader) (*structs.GeoInfo, error) {
+func FetchGeoInfo(ip string, cityDB, asnDB *g.Reader) (*s.GeoInfo, error) {
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		return nil, fmt.Errorf("invalid IP address")
@@ -49,7 +49,7 @@ func FetchGeoInfo(ip string, cityDB, asnDB *geoip2.Reader) (*structs.GeoInfo, er
 		return nil, err
 	}
 
-	return &structs.GeoInfo{
+	return &s.GeoInfo{
 		ClientIP:   ip,
 		Country:    cityRecord.Country.Names["en"],
 		City:       cityRecord.City.Names["en"],
@@ -62,7 +62,7 @@ func FetchGeoInfo(ip string, cityDB, asnDB *geoip2.Reader) (*structs.GeoInfo, er
 }
 
 // GetGeoInfo sends a request to the server and retrieves IP info
-func GetGeoInfo(ip string) (*structs.GeoInfo, error) {
+func GetGeoInfo(ip string) (*s.GeoInfo, error) {
 	url := os.Getenv("ECHO_IP_SERVICE_URL")
 	if url == "" {
 		url = "http://localhost:8745"
@@ -87,7 +87,7 @@ func GetGeoInfo(ip string) (*structs.GeoInfo, error) {
 		return nil, fmt.Errorf("failed to get valid response: %s", resp.Status)
 	}
 
-	var geoInfo structs.GeoInfo
+	var geoInfo s.GeoInfo
 	if err := json.NewDecoder(resp.Body).Decode(&geoInfo); err != nil {
 		return nil, fmt.Errorf("error decoding JSON response: %v", err)
 	}

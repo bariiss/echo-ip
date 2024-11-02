@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	c "github.com/bariiss/echo-ip/cache"
 	"github.com/bariiss/echo-ip/utils"
-	"github.com/oschwald/geoip2-golang"
+	g "github.com/oschwald/geoip2-golang"
 	"log"
 	"net/http"
 	"time"
@@ -29,22 +29,22 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load databases
-	cityDB, err := geoip2.Open("geolite/GeoLite2-City.mmdb")
+	cityDB, err := g.Open("geolite/GeoLite2-City.mmdb")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func(cityDB *geoip2.Reader) {
+	defer func(cityDB *g.Reader) {
 		err := cityDB.Close()
 		if err != nil {
 			log.Fatal(err)
 		}
 	}(cityDB)
 
-	asnDB, err := geoip2.Open("geolite/GeoLite2-ASN.mmdb")
+	asnDB, err := g.Open("geolite/GeoLite2-ASN.mmdb")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func(asnDB *geoip2.Reader) {
+	defer func(asnDB *g.Reader) {
 		err := asnDB.Close()
 		if err != nil {
 			log.Fatal(err)

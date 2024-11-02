@@ -1,14 +1,14 @@
 package cache
 
 import (
-	"github.com/bariiss/echo-ip/structs"
+	s "github.com/bariiss/echo-ip/structs"
 	"sync"
 	"time"
 )
 
 // Entry structure with response and expiration time
 type Entry struct {
-	Response   *structs.GeoInfo
+	Response   *s.GeoInfo
 	Expiration time.Time
 }
 

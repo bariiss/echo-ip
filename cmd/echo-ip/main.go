@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/bariiss/echo-ip/utils"
+	u "github.com/bariiss/echo-ip/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,7 @@ func main() {
 		Short: "Fetch IP geolocation information",
 		Long:  `A CLI tool to fetch geolocation information based on an IP address using a remote server.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			geoInfo, err := utils.GetGeoInfo(ip)
+			geoInfo, err := u.GetGeoInfo(ip)
 			if err != nil {
 				log.Fatalf("Error retrieving IP information: %v", err)
 			}
