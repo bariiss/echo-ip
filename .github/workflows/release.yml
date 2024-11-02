@@ -40,7 +40,7 @@ jobs:
 
       - name: Build API Binary for Release
         run: |
-          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
+          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}
           if [ "${{ matrix.os }}" == "windows" ]; then
             ROOT_BINARY_NAME="${ROOT_BINARY_NAME}.exe"
           fi
@@ -48,7 +48,7 @@ jobs:
 
       - name: Build CMD Binary for Release
         run: |
-          CMD_BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
+          CMD_BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}
           if [ "${{ matrix.os }}" == "windows" ]; then
             CMD_BINARY_NAME="${CMD_BINARY_NAME}.exe"
           fi
@@ -56,8 +56,8 @@ jobs:
 
       - name: Verify Binary Existence
         run: |
-          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
-          CMD_BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
+          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}
+          CMD_BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}
           if [ "${{ matrix.os }}" == "windows" ]; then
             ROOT_BINARY_NAME="${ROOT_BINARY_NAME}.exe"
             CMD_BINARY_NAME="${CMD_BINARY_NAME}.exe"
@@ -73,8 +73,8 @@ jobs:
         with:
           name: echo-ip-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
-            echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
+            echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}*
+            echo-ip-${{ matrix.os }}-${{ matrix.arch }}*
 
       - name: Create Release
         if: success()
@@ -83,7 +83,7 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.TAG_NAME }}
           files: |
-            echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
-            echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
+            echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}*
+            echo-ip-${{ matrix.os }}-${{ matrix.arch }}*
         env:
           GITHUB_TOKEN: ${{ secrets.MY_PAT_TOKEN }}
