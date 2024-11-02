@@ -58,4 +58,4 @@ ENV ECHO_IP_SERVICE_URL=https://example.com
 COPY --from=builder-client /app/echo-ip /usr/local/bin/echo-ip
 
 # Set the entry point to the client binary
-ENTRYPOINT ["echo-ip"]
+ENTRYPOINT ["/usr/local/bin/echo-ip"]
