@@ -1,5 +1,5 @@
 # Use an official Golang image as the build environment
-FROM golang:1.20 as builder-server
+FROM golang:1.23 as builder-api
 
 # Set the working directory
 WORKDIR /app
@@ -12,26 +12,26 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN go build -o echo-ip-server ./cmd/echo-ip
+RUN go build -o echo-ip-api .
 
 # Final stage: Run the binary in a minimal image
-FROM debian:buster-slim as final-server
+FROM debian:buster-slim as final-api
 
 # Set environment variables for the server
 ENV ECHO_IP_PORT=8745
 
 # Copy the built binary and GeoLite2 database files from the builder stage
-COPY --from=builder-server /app/echo-ip-server /usr/local/bin/echo-ip-server
-COPY --from=builder-server /app/geolite /app/geolite
+COPY --from=builder-api /app/echo-ip-api /usr/local/bin/echo-ip-api
+COPY --from=builder-api /app/geolite /app/geolite
 
 # Expose the application port
 EXPOSE 8745
 
 # Run the application
-CMD ["echo-ip-server"]
+CMD ["echo-ip-api"]
 
 # Use an official Golang image as the build environment
-FROM golang:1.20 as builder-client
+FROM golang:1.23 as builder-client
 
 # Set the working directory
 WORKDIR /app
