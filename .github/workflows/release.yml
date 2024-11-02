@@ -48,7 +48,7 @@ jobs:
             git push --delete origin ${{ env.TAG_NAME }}
           fi
 
-      - name: Build Root Binary for Release
+      - name: Build API Binary for Release
         run: |
           ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
           if [ "${{ matrix.os }}" == "windows" ]; then
