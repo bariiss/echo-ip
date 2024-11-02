@@ -40,14 +40,13 @@ jobs:
 
       - name: Delete Existing Release if Exists
         run: |
+          gh auth login --with-token <<< "${{ secrets.MY_PAT_TOKEN }}"
           if gh release view ${{ env.TAG_NAME }}; then
             echo "Deleting existing release for tag ${{ env.TAG_NAME }}..."
             gh release delete ${{ env.TAG_NAME }} -y
             echo "Deleting existing tag ${{ env.TAG_NAME }}..."
             git push --delete origin ${{ env.TAG_NAME }}
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Root Binary for Release
         run: |
