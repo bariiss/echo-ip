@@ -26,12 +26,28 @@ jobs:
         with:
           go-version: '1.23.2'
 
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
+
       - name: Create a Single Tag
         id: create_tag
         run: |
           VERSION=$(date +'%Y%m%d')
           echo "TAG_NAME=v${VERSION}" >> $GITHUB_ENV
           echo "Created TAG_NAME=$TAG_NAME"
+
+      - name: Delete Existing Release if Exists
+        run: |
+          if gh release view ${{ env.TAG_NAME }}; then
+            echo "Deleting existing release for tag ${{ env.TAG_NAME }}..."
+            gh release delete ${{ env.TAG_NAME }} -y
+            echo "Deleting existing tag ${{ env.TAG_NAME }}..."
+            git push --delete origin ${{ env.TAG_NAME }}
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Root Binary for Release
         run: |
