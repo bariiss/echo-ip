@@ -8,7 +8,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy the entire application code
+# Copy the entire application code, including geolite directory
 COPY . .
 
 # Build the application with static linking
@@ -16,19 +16,22 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip-api .
 
 # Final stage: Run the binary in a minimal Alpine image
 FROM alpine:3.20.3 AS final-api
+WORKDIR /app
 
 # Set environment variables for the server
 ENV ECHO_IP_PORT=8745
 
-# Copy the built binary and GeoLite2 database files from the builder stage
-COPY --from=builder-api /app/echo-ip-api /usr/local/bin/echo-ip-api
+# Copy the built binary from the builder stage
+COPY --from=builder-api /app/echo-ip-api /app/echo-ip-api
+
+# Copy the GeoLite2 database files
 COPY --from=builder-api /app/geolite /app/geolite
 
 # Expose the application port
 EXPOSE 8745
 
 # Run the application
-CMD ["/usr/local/bin/echo-ip-api"]
+CMD ["./echo-ip-api"]
 
 # Use an official Golang image as the build environment
 FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-client
