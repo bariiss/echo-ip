@@ -1,21 +1,23 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
+	c "github.com/bariiss/echo-ip/cache"
+	"github.com/bariiss/echo-ip/utils"
 	"github.com/oschwald/geoip2-golang"
 	"log"
 	"net/http"
 	"time"
 )
 
-// handler is the main HTTP handler for the server
-func handler(w http.ResponseWriter, r *http.Request) {
-	clientIP := getClientIP(r)
+// MainHandler is the main HTTP handler for the server
+func MainHandler(w http.ResponseWriter, r *http.Request) {
+	clientIP := utils.GetClientIP(r)
 
 	// Check if we have a cached response
-	cache.RLock()
-	entry, found := cache.data[clientIP]
-	cache.RUnlock()
+	c.Cache.RLock()
+	entry, found := c.Cache.Data[clientIP]
+	c.Cache.RUnlock()
 	if found && time.Now().Before(entry.Expiration) {
 		// Return the cached response
 		w.Header().Set("Content-Type", "application/json")
@@ -50,19 +52,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}(asnDB)
 
 	// Query new information
-	geoInfo, err := getGeoInfo(clientIP, cityDB, asnDB)
+	geoInfo, err := utils.FetchGeoInfo(clientIP, cityDB, asnDB)
 	if err != nil {
 		http.Error(w, "Unable to retrieve geo information", http.StatusInternalServerError)
 		return
 	}
 
 	// Cache the response with a 1-hour expiration
-	cache.Lock()
-	cache.data[clientIP] = cacheEntry{
+	c.Cache.Lock()
+	c.Cache.Data[clientIP] = c.Entry{
 		Response:   geoInfo,
 		Expiration: time.Now().Add(1 * time.Hour),
 	}
-	cache.Unlock()
+	c.Cache.Unlock()
 
 	// Return the response
 	w.Header().Set("Content-Type", "application/json")
