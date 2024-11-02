@@ -29,30 +29,30 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load databases
-	cityDB, err := g.Open("geolite/GeoLite2-City.mmdb")
+	city, err := g.Open("geolite/GeoLite2-City.mmdb")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func(cityDB *g.Reader) {
-		err := cityDB.Close()
+	defer func(city *g.Reader) {
+		err := city.Close()
 		if err != nil {
 			log.Fatal(err)
 		}
-	}(cityDB)
+	}(city)
 
-	asnDB, err := g.Open("geolite/GeoLite2-ASN.mmdb")
+	asn, err := g.Open("geolite/GeoLite2-ASN.mmdb")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func(asnDB *g.Reader) {
-		err := asnDB.Close()
+	defer func(asn *g.Reader) {
+		err := asn.Close()
 		if err != nil {
 			log.Fatal(err)
 		}
-	}(asnDB)
+	}(asn)
 
 	// Query new information
-	geoInfo, err := utils.FetchGeoInfo(clientIP, cityDB, asnDB)
+	geoInfo, err := utils.FetchGeoInfo(clientIP, city, asn)
 	if err != nil {
 		http.Error(w, "Unable to retrieve geo information", http.StatusInternalServerError)
 		return
