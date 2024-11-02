@@ -12,6 +12,9 @@ jobs:
     name: Build and Push
     runs-on: [ubuntu-latest]
     if: contains(github.event.head_commit.message, '#BUILD')
+    strategy:
+        matrix:
+            target: [api, client]
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -55,6 +58,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           no-cache: true
+          target: final-${{ matrix.target }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ steps.repo_name.outputs.REPO_NAME }}:latest
             ghcr.io/${{ github.repository_owner }}/${{ steps.repo_name.outputs.REPO_NAME }}:${{ steps.create_tag.outputs.TAG_NAME }}
