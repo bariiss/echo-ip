@@ -39,7 +39,7 @@ jobs:
           if [ "${{ matrix.os }}" == "windows" ]; then
             ROOT_BINARY_NAME="${ROOT_BINARY_NAME}.exe"
           fi
-          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $ROOT_BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo main.go
+          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $ROOT_BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo .
 
       - name: Build CMD Binary for Release
         run: |
