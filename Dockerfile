@@ -17,7 +17,7 @@ COPY . .
 RUN go build -o echo-ip-api .
 
 # Final stage: Run the binary in a minimal image
-FROM debian:buster-slim AS final-api
+FROM alpine:3.20.3 AS final-api
 
 # Set environment variables for the server
 ENV ECHO_IP_PORT=8745
@@ -51,7 +51,7 @@ COPY . .
 RUN go build -o echo-ip ./cmd/echo-ip
 
 # Final stage: Run the binary in a minimal image
-FROM debian:buster-slim AS final-client
+FROM alpine:3.20.3 AS final-client
 
 # Set environment variables for the client
 ENV ECHO_IP_SERVICE_URL=https://example.com
