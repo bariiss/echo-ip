@@ -1,7 +1,5 @@
 # Use an official Golang image as the build environment
 FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-api
-ARG TARGETARCH
-ARG TARGETOS
 
 # Set the working directory
 WORKDIR /app
@@ -13,10 +11,10 @@ RUN go mod download
 # Copy the entire application code
 COPY . .
 
-# Build the application
-RUN go build -o echo-ip-api .
+# Build the application with static linking
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip-api .
 
-# Final stage: Run the binary in a minimal image
+# Final stage: Run the binary in a minimal Alpine image
 FROM alpine:3.20.3 AS final-api
 
 # Set environment variables for the server
@@ -30,7 +28,7 @@ COPY --from=builder-api /app/geolite /app/geolite
 EXPOSE 8745
 
 # Run the application
-CMD ["echo-ip-api"]
+CMD ["/usr/local/bin/echo-ip-api"]
 
 # Use an official Golang image as the build environment
 FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-client
@@ -48,7 +46,7 @@ RUN go mod download
 COPY . .
 
 # Build the CLI application
-RUN go build -o echo-ip ./cmd/echo-ip
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip ./cmd/echo-ip
 
 # Final stage: Run the binary in a minimal image
 FROM alpine:3.20.3 AS final-client
