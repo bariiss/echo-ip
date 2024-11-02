@@ -33,22 +33,34 @@ jobs:
           echo "TAG_NAME=v${VERSION}" >> $GITHUB_ENV
           echo "Created TAG_NAME=$TAG_NAME"
 
-      - name: Build Binary for Release
+      - name: Build Root Binary for Release
         run: |
-          BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
+          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
           if [ "${{ matrix.os }}" == "windows" ]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
+            ROOT_BINARY_NAME="${ROOT_BINARY_NAME}.exe"
           fi
-          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo
+          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $ROOT_BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo main.go
+
+      - name: Build CMD Binary for Release
+        run: |
+          CMD_BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
+          if [ "${{ matrix.os }}" == "windows" ]; then
+            CMD_BINARY_NAME="${CMD_BINARY_NAME}.exe"
+          fi
+          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $CMD_BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo cmd/echo-ip/main.go
 
       - name: Verify Binary Existence
         run: |
-          BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
+          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
+          CMD_BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}
           if [ "${{ matrix.os }}" == "windows" ]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
+            ROOT_BINARY_NAME="${ROOT_BINARY_NAME}.exe"
+            CMD_BINARY_NAME="${CMD_BINARY_NAME}.exe"
           fi
-          echo "Verifying binary existence..."
-          ls -la $BINARY_NAME
+          echo "Verifying root binary existence..."
+          ls -la $ROOT_BINARY_NAME
+          echo "Verifying cmd binary existence..."
+          ls -la $CMD_BINARY_NAME
 
       - name: Upload Release Assets
         if: success()
@@ -56,6 +68,7 @@ jobs:
         with:
           name: echo-ip-${{ matrix.os }}-${{ matrix.arch }}
           path: |
+            echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
             echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
 
       - name: Create Release
@@ -64,6 +77,8 @@ jobs:
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.TAG_NAME }}
-          files: echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
+          files: |
+            echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
+            echo-ip-${{ matrix.os }}-${{ matrix.arch }}-${{ env.TAG_NAME }}*
         env:
           GITHUB_TOKEN: ${{ secrets.MY_PAT_TOKEN }}
