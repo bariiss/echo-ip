@@ -67,7 +67,8 @@ ENV EDNS_DOMAIN=edns.example.com
 COPY --from=builder-dns-api /app/echo-dns-api /app/echo-dns-api
 
 # Expose the application port
-EXPOSE 5353
+EXPOSE 5353/udp
+EXPOSE 8080
 
 # Run the application
 CMD ["./echo-dns-api"]
