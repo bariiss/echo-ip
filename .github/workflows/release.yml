@@ -38,13 +38,21 @@ jobs:
           echo "TAG_NAME=v${VERSION}" >> $GITHUB_ENV
           echo "Created TAG_NAME=$TAG_NAME"
 
-      - name: Build API Binary for Release
+      - name: Build IP API Binary for Release
         run: |
-          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}
+          IP_API_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}
           if [ "${{ matrix.os }}" == "windows" ]; then
-            ROOT_BINARY_NAME="${ROOT_BINARY_NAME}.exe"
+            IP_API_BINARY_NAME="${IP_API_BINARY_NAME}.exe"
           fi
-          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $ROOT_BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo web/echo-ip-api/main.go
+          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $IP_API_BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo web/echo-ip-api/main.go
+
+      - name: Build DNS API Binary for Release
+        run: |
+          DNS_API_BINARY_NAME=echo-dns-api-${{ matrix.os }}-${{ matrix.arch }}
+          if [ "${{ matrix.os }}" == "windows" ]; then
+            DNS_API_BINARY_NAME="${DNS_API_BINARY_NAME}.exe"
+          fi
+          CGO_ENABLED=0 GOARCH=${{ matrix.arch }} GOOS=${{ matrix.os }} go build -o $DNS_API_BINARY_NAME -a -ldflags="-s -w" -installsuffix cgo web/echo-dns-api/main.go
 
       - name: Build CMD Binary for Release
         run: |
@@ -56,14 +64,18 @@ jobs:
 
       - name: Verify Binary Existence
         run: |
-          ROOT_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}
+          IP_API_BINARY_NAME=echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}
+          DNS_API_BINARY_NAME=echo-dns-api-${{ matrix.os }}-${{ matrix.arch }}
           CMD_BINARY_NAME=echo-ip-${{ matrix.os }}-${{ matrix.arch }}
           if [ "${{ matrix.os }}" == "windows" ]; then
-            ROOT_BINARY_NAME="${ROOT_BINARY_NAME}.exe"
+            IP_API_BINARY_NAME="${IP_API_BINARY_NAME}.exe"
+            DNS_API_BINARY_NAME="${DNS_API_BINARY_NAME}.exe"
             CMD_BINARY_NAME="${CMD_BINARY_NAME}.exe"
           fi
-          echo "Verifying root binary existence..."
-          ls -la $ROOT_BINARY_NAME
+          echo "Verifying ip-api binary existence..."
+          ls -la $IP_API_BINARY_NAME
+          echo "Verifying dns-api binary existence..."
+          ls -la $DNS_API_BINARY_NAME
           echo "Verifying cmd binary existence..."
           ls -la $CMD_BINARY_NAME
 
@@ -74,6 +86,7 @@ jobs:
           name: echo-ip-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}*
+            echo-dns-api-${{ matrix.os }}-${{ matrix.arch }}*
             echo-ip-${{ matrix.os }}-${{ matrix.arch }}*
 
       - name: Create Release
@@ -84,6 +97,7 @@ jobs:
           name: ${{ env.TAG_NAME }}
           files: |
             echo-ip-api-${{ matrix.os }}-${{ matrix.arch }}*
+            echo-dns-api-${{ matrix.os }}-${{ matrix.arch }}*
             echo-ip-${{ matrix.os }}-${{ matrix.arch }}*
         env:
           GITHUB_TOKEN: ${{ secrets.MY_PAT_TOKEN }}
