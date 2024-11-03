@@ -25,7 +25,6 @@ func init() {
 	}()
 }
 
-// main function initializes the server and sets up the HTTP handler
 func main() {
 	port := os.Getenv("ECHO_IP_PORT")
 	if port == "" {
@@ -33,6 +32,7 @@ func main() {
 	}
 
 	http.HandleFunc("/", h.MainHandler)
+
 	log.Printf("Server started on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

@@ -12,7 +12,7 @@ RUN go mod download
 COPY . .
 
 # Build the application with static linking
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip-api .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip-api ./web/echo-ip-api
 
 # Final stage: Run the binary in a minimal Alpine image
 FROM alpine:3.20.3 AS final-api
