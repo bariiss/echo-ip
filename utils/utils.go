@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	c "github.com/bariiss/echo-ip/cache"
 	s "github.com/bariiss/echo-ip/structs"
 	g "github.com/oschwald/geoip2-golang"
 	"io"
@@ -11,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // GetClientIP retrieves the client's IP address from the request
@@ -93,4 +97,30 @@ func GetGeoInfo(ip string) (*s.GeoInfo, error) {
 	}
 
 	return &geoInfo, nil
+}
+
+// GenerateGUID generates a random GUID
+func GenerateGUID() string {
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// CacheCleanup periodically cleans up the cache
+func CacheCleanup() {
+	go func() {
+		for {
+			time.Sleep(1 * time.Hour)
+			c.Cache.Lock()
+			for ip, entry := range c.Cache.Data {
+				if time.Now().After(entry.Expiration) {
+					delete(c.Cache.Data, ip)
+				}
+			}
+			c.Cache.Unlock()
+		}
+	}()
 }

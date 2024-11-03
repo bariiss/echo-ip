@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// MainHandler is the main HTTP handler for the server
-func MainHandler(w http.ResponseWriter, r *http.Request) {
+// IPMainHandler is the main HTTP handler for the server
+func IPMainHandler(w http.ResponseWriter, r *http.Request) {
 	clientIP := utils.GetClientIP(r)
 
 	// Check if we have a cached response

@@ -1,121 +1,244 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
+	u "github.com/bariiss/echo-ip/utils"
+	"github.com/miekg/dns"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
-
-	"github.com/miekg/dns"
+	"time"
 )
 
-// DNSRequest stores details of captured DNS requests.
-type DNSRequest struct {
-	GUID        string
-	ResolverIP  string
-	QueryDomain string
+var (
+	targetIP   string
+	port       string
+	domainName string
+	wildcard   string
+)
+
+// ClientDNSInfo stores DNS server information for a client
+type ClientDNSInfo struct {
+	PrimaryDNS   string
+	SecondaryDNS string
+	LastSeen     time.Time
 }
 
-// DNSHandler manages DNS requests and stores them in memory.
-type DNSHandler struct {
-	requests []DNSRequest
-	mu       sync.Mutex
+// DNSCache stores client DNS information with thread-safe access
+type DNSCache struct {
+	sync.RWMutex
+	clients map[string]*ClientDNSInfo
 }
 
-// Generate a unique GUID for each request
-func generateGUID() string {
-	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
-		log.Fatal(err)
+// Global cache instance
+var dnsCache = &DNSCache{
+	clients: make(map[string]*ClientDNSInfo),
+}
+
+// Initialize the target IP and domain name
+func init() {
+	targetIP = os.Getenv("ECHO_IP_TARGET_IP")
+	port = os.Getenv("ECHO_IP_PORT")
+	domainName = os.Getenv("ECHO_IP_DOMAIN")
+	wildcard = "*." + domainName
+
+	// Start cache cleanup routine
+	go cleanupCache()
+}
+
+// UpdateClientDNS updates the DNS servers for a client
+func (c *DNSCache) UpdateClientDNS(clientIP, dnsIP string) {
+	c.Lock()
+	defer c.Unlock()
+
+	info, exists := c.clients[clientIP]
+	if !exists {
+		info = &ClientDNSInfo{
+			PrimaryDNS: dnsIP,
+			LastSeen:   time.Now(),
+		}
+		c.clients[clientIP] = info
+	} else if info.PrimaryDNS != dnsIP {
+		if info.SecondaryDNS == "" || info.SecondaryDNS != dnsIP {
+			info.SecondaryDNS = dnsIP
+		}
+		info.LastSeen = time.Now()
 	}
-	return hex.EncodeToString(b)
 }
 
-// Handle the initial HTTP request, redirecting to the GUID-based subdomain
-func handleInitialRequest(w http.ResponseWriter, r *http.Request) {
-	// Get the EDNS domain from environment variable
-	domain := os.Getenv("EDNS_DOMAIN")
-	if domain == "" {
-		log.Fatal("EDNS_DOMAIN environment variable is not set")
-	}
-
-	guid := generateGUID()
-	redirectURL := fmt.Sprintf("https://%s.%s/json", guid, domain)
-
-	// Log or save GUID to track associated requests (optional for this example)
-
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+// GetClientDNSInfo retrieves DNS information for a client
+func (c *DNSCache) GetClientDNSInfo(clientIP string) *ClientDNSInfo {
+	c.RLock()
+	defer c.RUnlock()
+	return c.clients[clientIP]
 }
 
-// ServeDNS handles DNS queries and logs resolver IP and GUID
-func (h *DNSHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if len(r.Question) > 0 {
-		question := r.Question[0]
-		resolverIP := w.RemoteAddr().String()
-
-		// Extract GUID from the subdomain (first segment of question.Name)
-		var guid string
-		if len(question.Name) > 0 {
-			parts := dns.SplitDomainName(question.Name)
-			if len(parts) > 0 {
-				guid = parts[0] // GUID is the first part of the domain
+// cleanupCache removes old entries from the cache
+func cleanupCache() {
+	ticker := time.NewTicker(10 * time.Minute)
+	for range ticker.C {
+		dnsCache.Lock()
+		now := time.Now()
+		for ip, info := range dnsCache.clients {
+			if now.Sub(info.LastSeen) > 24*time.Hour {
+				delete(dnsCache.clients, ip)
 			}
 		}
-
-		// Store the DNS request information
-		dnsRequest := DNSRequest{
-			GUID:        guid,
-			ResolverIP:  resolverIP,
-			QueryDomain: question.Name,
-		}
-		h.requests = append(h.requests, dnsRequest)
-		log.Printf("Captured DNS request: %+v", dnsRequest)
+		dnsCache.Unlock()
 	}
+}
 
-	// Respond to avoid timeout
+// DNSRequestHandler handles DNS requests for GUID subdomains
+func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
-	err := w.WriteMsg(m)
+	m.Authoritative = true
+
+	// Log and store the resolver IP address
+	resolverIP, _, _ := net.SplitHostPort(w.RemoteAddr().String())
+	log.Printf("DNS Request from resolver IP: %s", resolverIP)
+
+	// Extract client IP from EDNS0 Client Subnet if available
+	clientIP := resolverIP
+	for _, extra := range r.Extra {
+		if opt, ok := extra.(*dns.OPT); ok {
+			for _, o := range opt.Option {
+				if e, ok := o.(*dns.EDNS0_SUBNET); ok {
+					clientIP = e.Address.String()
+					break
+				}
+			}
+		}
+	}
+
+	// Update DNS cache with resolver information
+	dnsCache.UpdateClientDNS(clientIP, resolverIP)
+
+	for _, question := range r.Question {
+		if question.Qtype == dns.TypeA && (question.Name == domainName || dns.IsSubDomain(wildcard, question.Name)) {
+			aRecord := &dns.A{
+				Hdr: dns.RR_Header{
+					Name:   question.Name,
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    60,
+				},
+				A: net.ParseIP(targetIP),
+			}
+			m.Answer = append(m.Answer, aRecord)
+			log.Printf("A record for %s requested", question.Name)
+		}
+	}
+
+	if err := w.WriteMsg(m); err != nil {
+		log.Printf("Error: %v", err)
+	}
+}
+
+// DNSMainHandler handles the root path and generates a new GUID
+func DNSMainHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/" {
+		// Get client IP
+		clientIP := getClientIP(r)
+
+		// Get DNS information
+		dnsInfo := dnsCache.GetClientDNSInfo(clientIP)
+
+		if dnsInfo != nil {
+			// Display DNS information and generate new GUID
+			w.Header().Set("Content-Type", "text/plain")
+			response := fmt.Sprintf("Client IP: %s\nPrimary DNS: %s\nSecondary DNS: %s\n\n",
+				clientIP,
+				dnsInfo.PrimaryDNS,
+				dnsInfo.SecondaryDNS)
+
+			guid := u.GenerateGUID()
+			redirectURL := fmt.Sprintf("https://%s.%s", guid, domainName)
+			response += fmt.Sprintf("Generated GUID: %s\nRedirect URL: %s", guid, redirectURL)
+
+			_, err := fmt.Fprint(w, response)
+			if err != nil {
+				return
+			}
+		} else {
+			// If no DNS info is available, just generate GUID and redirect
+			guid := u.GenerateGUID()
+			redirectURL := fmt.Sprintf("https://%s.%s", guid, domainName)
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+		}
+		return
+	}
+	GUIDRequestHandler(w, r)
+}
+
+// GUIDRequestHandler handles HTTP requests to /{guid}
+func GUIDRequestHandler(w http.ResponseWriter, r *http.Request) {
+	guid := strings.TrimPrefix(r.URL.Path, "/")
+	if guid == "" {
+		http.Error(w, "GUID is missing in the URL", http.StatusBadRequest)
+		return
+	}
+
+	clientIP := getClientIP(r)
+	dnsInfo := dnsCache.GetClientDNSInfo(clientIP)
+
+	w.Header().Set("Content-Type", "text/plain")
+
+	response := fmt.Sprintf("GUID: %s\n", guid)
+	if dnsInfo != nil {
+		response += fmt.Sprintf("Client IP: %s\nPrimary DNS: %s\nSecondary DNS: %s\n",
+			clientIP,
+			dnsInfo.PrimaryDNS,
+			dnsInfo.SecondaryDNS)
+	}
+
+	redirectURL := fmt.Sprintf("https://%s.%s", guid, domainName)
+	response += fmt.Sprintf("Redirect URL: %s", redirectURL)
+
+	_, err := fmt.Fprint(w, response)
 	if err != nil {
 		return
 	}
 }
 
-// ServeCapturedRequests provides a web endpoint to view captured DNS requests
-func (h *DNSHandler) ServeCapturedRequests(w http.ResponseWriter, _ *http.Request) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	for _, req := range h.requests {
-		_, _ = fmt.Fprintf(w, "GUID: %s, Resolver IP: %s, Query Domain: %s\n", req.GUID, req.ResolverIP, req.QueryDomain)
+// getClientIP extracts the real client IP from the request
+func getClientIP(r *http.Request) string {
+	// Check X-Real-IP header
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
 	}
+
+	// Check X-Forwarded-For header
+	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+		return strings.Split(ip, ",")[0]
+	}
+
+	// Fall back to RemoteAddr
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return ip
 }
 
 func main() {
-	dnsHandler := &DNSHandler{}
-
-	// Start DNS server on a specified port
+	// Initialize the DNS server
+	dns.HandleFunc(".", DNSRequestHandler)
+	server := &dns.Server{Addr: ":53", Net: "udp"}
 	go func() {
-		dnsServer := &dns.Server{Addr: ":5353", Net: "udp"}
-		dns.HandleFunc(".", dnsHandler.ServeDNS)
-		log.Println("Starting DNS server on :5353")
-		if err := dnsServer.ListenAndServe(); err != nil {
-			log.Fatalf("Failed to start DNS server: %v", err)
+		if err := server.ListenAndServe(); err != nil {
+			log.Fatalf("Failed to set up the DNS server: %v", err)
 		}
 	}()
+	defer func(server *dns.Server) {
+		err := server.Shutdown()
+		if err != nil {
+			log.Fatalf("Failed to shut down the DNS server: %v", err)
+		}
+	}(server)
 
-	// HTTP server to redirect to unique GUID-based subdomain
-	http.HandleFunc("/json", handleInitialRequest)
-	// Endpoint to view captured DNS requests
-	http.HandleFunc("/dns-requests", dnsHandler.ServeCapturedRequests)
-
-	log.Println("Starting web server on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// Initialize the HTTP server
+	http.HandleFunc("/", DNSMainHandler)
+	log.Printf("HTTP Server started on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
