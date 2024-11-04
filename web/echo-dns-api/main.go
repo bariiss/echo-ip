@@ -97,9 +97,10 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m.SetReply(r)
 	m.Authoritative = true
 
-	// Log target IP and request details for debugging
+	// Log request and target IP
 	log.Printf("Handling DNS request. Target IP: %s, Domain: %s", targetIP, domainName)
 
+	// Extract resolver and client IPs
 	resolverIP, _, _ := net.SplitHostPort(w.RemoteAddr().String())
 	clientIP := resolverIP
 	for _, extra := range r.Extra {
@@ -113,8 +114,10 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
+	// Update the DNS cache
 	dnsCache.UpdateClientDNS(clientIP, resolverIP)
 
+	// Loop through questions and prepare an A record if applicable
 	for _, question := range r.Question {
 		log.Printf("Question received: %v", question.Name)
 		if question.Qtype == dns.TypeA && (question.Name == domainName || dns.IsSubDomain(wildcard, question.Name)) {
@@ -123,6 +126,8 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 				log.Printf("Error: Unable to parse target IP %s", targetIP)
 				return
 			}
+
+			// Create the A record
 			aRecord := &dns.A{
 				Hdr: dns.RR_Header{
 					Name:   question.Name,
@@ -137,6 +142,10 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
+	// Log the entire answer section for verification
+	log.Printf("Response Answer Section: %v", m.Answer)
+
+	// Write the response
 	if err := w.WriteMsg(m); err != nil {
 		log.Printf("Error writing DNS response: %v", err)
 	}
