@@ -103,12 +103,25 @@ func isMatchingDomain(name string) bool {
 		name = name + "."
 	}
 
-	// Exact domain match or subdomain
-	if name == domainName || strings.HasSuffix(name, "."+domainName) {
-		withoutSuffix := strings.TrimSuffix(name, "."+domainName)
-		// Allow exact match or direct subdomains only
-		isValid := name == domainName || !strings.Contains(withoutSuffix, ".")
-		log.Printf("Domain check: %s, valid: %v", name, isValid)
+	// Root domain match
+	if name == domainName {
+		log.Printf("Root domain match: %s", name)
+		return true
+	}
+
+	// Nameserver domain match
+	if name == "ns1."+domainName || name == "ns2."+domainName {
+		log.Printf("Nameserver domain match: %s", name)
+		return true
+	}
+
+	// Check for edns subdomain
+	ednsPrefix := "edns." + domainName
+	if name == ednsPrefix || strings.HasSuffix(name, "."+ednsPrefix) {
+		withoutSuffix := strings.TrimSuffix(name, "."+ednsPrefix)
+		// Allow exact match or direct subdomains only for edns
+		isValid := name == ednsPrefix || !strings.Contains(withoutSuffix, ".")
+		log.Printf("EDNS domain check: %s, valid: %v", name, isValid)
 		return isValid
 	}
 
@@ -127,30 +140,88 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 		name := question.Name
 		log.Printf("Question: %s, Type: %d", name, question.Qtype)
 
-		if question.Qtype == dns.TypeA {
-			// Domain kontrolü
-			if !isMatchingDomain(name) {
-				log.Printf("Domain not matching our criteria: %s", name)
-				continue
+		switch question.Qtype {
+		case dns.TypeSOA:
+			// SOA kaydı için
+			if name == domainName {
+				soa := &dns.SOA{
+					Hdr: dns.RR_Header{
+						Name:   domainName,
+						Rrtype: dns.TypeSOA,
+						Class:  dns.ClassINET,
+						Ttl:    3600,
+					},
+					Ns:      "ns1." + domainName,
+					Serial:  uint32(time.Now().Unix()),
+					Refresh: 3600,
+					Retry:   900,
+					Expire:  86400,
+					Minttl:  60,
+				}
+				m.Answer = append(m.Answer, soa)
+				log.Printf("Added SOA record for %s", name)
 			}
 
-			ip := net.ParseIP(targetIP)
-			if ip == nil {
-				log.Printf("Error: Invalid target IP address: %s", targetIP)
-				continue
+		case dns.TypeNS:
+			// NS kayıtları için
+			if name == domainName {
+				ns1 := &dns.NS{
+					Hdr: dns.RR_Header{
+						Name:   domainName,
+						Rrtype: dns.TypeNS,
+						Class:  dns.ClassINET,
+						Ttl:    3600,
+					},
+					Ns: "ns1." + domainName,
+				}
+				ns2 := &dns.NS{
+					Hdr: dns.RR_Header{
+						Name:   domainName,
+						Rrtype: dns.TypeNS,
+						Class:  dns.ClassINET,
+						Ttl:    3600,
+					},
+					Ns: "ns2." + domainName,
+				}
+				m.Answer = append(m.Answer, ns1, ns2)
+				log.Printf("Added NS records for %s", name)
 			}
 
-			rr := &dns.A{
-				Hdr: dns.RR_Header{
-					Name:   name,
-					Rrtype: dns.TypeA,
-					Class:  dns.ClassINET,
-					Ttl:    60,
-				},
-				A: ip,
+		case dns.TypeA:
+			// A kayıtları için
+			if isMatchingDomain(name) {
+				ip := net.ParseIP(targetIP)
+				if ip == nil {
+					log.Printf("Error: Invalid target IP address: %s", targetIP)
+					continue
+				}
+
+				rr := &dns.A{
+					Hdr: dns.RR_Header{
+						Name:   name,
+						Rrtype: dns.TypeA,
+						Class:  dns.ClassINET,
+						Ttl:    60,
+					},
+					A: ip,
+				}
+				m.Answer = append(m.Answer, rr)
+				log.Printf("Added A record: %s -> %s", name, targetIP)
+
+				// NS sunucuları için A kayıtları
+				if name == "ns1."+domainName || name == "ns2."+domainName {
+					nsRecord := &dns.A{
+						Hdr: dns.RR_Header{
+							Name:   name,
+							Rrtype: dns.TypeA,
+							Class:  dns.ClassINET,
+							Ttl:    3600,
+						},
+						A: ip,
+					}
+					m.Answer = append(m.Answer, nsRecord)
+				}
 			}
-			m.Answer = append(m.Answer, rr)
-			log.Printf("Added A record: %s -> %s", name, targetIP)
 		}
 	}
 
