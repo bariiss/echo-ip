@@ -158,8 +158,8 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 						Class:  dns.ClassINET,
 						Ttl:    3600,
 					},
-					Ns:      nsDomain1,
-					Mbox:    "hostmaster." + dnsDomain,
+					Ns:      nsDomain1, // Primary NS
+					Mbox:    nsDomain2, // İkinci NS'i mail server yerine kullan
 					Serial:  uint32(time.Now().Unix()),
 					Refresh: 3600,
 					Retry:   900,
