@@ -103,19 +103,13 @@ func isMatchingDomain(name string) bool {
 		name = name + "."
 	}
 
-	// Exact domain match
-	if name == domainName {
-		log.Printf("Exact domain match: %s == %s", name, domainName)
-		return true
-	}
-
-	// Subdomain match check
-	if strings.HasSuffix(name, "."+domainName) {
+	// Exact domain match or subdomain
+	if name == domainName || strings.HasSuffix(name, "."+domainName) {
 		withoutSuffix := strings.TrimSuffix(name, "."+domainName)
-		// Make sure it's a direct subdomain
-		isValidSubdomain := !strings.Contains(withoutSuffix, ".")
-		log.Printf("Subdomain check: %s, valid: %v", withoutSuffix, isValidSubdomain)
-		return isValidSubdomain
+		// Allow exact match or direct subdomains only
+		isValid := name == domainName || !strings.Contains(withoutSuffix, ".")
+		log.Printf("Domain check: %s, valid: %v", name, isValid)
+		return isValid
 	}
 
 	log.Printf("No match for domain: %s", name)
