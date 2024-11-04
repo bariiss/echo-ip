@@ -20,32 +20,38 @@ var (
 	wildcard   string
 )
 
-// ClientDNSInfo stores DNS server information for a client
 type ClientDNSInfo struct {
 	PrimaryDNS   string
 	SecondaryDNS string
 	LastSeen     time.Time
 }
 
-// DNSCache stores client DNS information with thread-safe access
 type DNSCache struct {
 	sync.RWMutex
 	clients map[string]*ClientDNSInfo
 }
 
-// Global cache instance
 var dnsCache = &DNSCache{
 	clients: make(map[string]*ClientDNSInfo),
 }
 
-// Initialize the target IP and domain name
 func init() {
 	targetIP = os.Getenv("ECHO_IP_TARGET_IP")
 	port = os.Getenv("ECHO_IP_PORT")
 	domainName = os.Getenv("ECHO_IP_DOMAIN")
+
+	if !strings.HasSuffix(domainName, ".") {
+		domainName = domainName + "."
+	}
+
 	wildcard = "*." + domainName
 
-	// Start cache cleanup routine
+	if targetIP == "" || port == "" || domainName == "" {
+		log.Fatal("Required environment variables are not set")
+	}
+
+	log.Printf("Initialized with Target IP: %s, Domain: %s, Wildcard: %s", targetIP, domainName, wildcard)
+
 	go cleanupCache()
 }
 
@@ -91,61 +97,62 @@ func cleanupCache() {
 	}
 }
 
-// DNSRequestHandler handles DNS requests for GUID subdomains
+func isMatchingDomain(name string) bool {
+	if name == domainName {
+		return true
+	}
+
+	if strings.HasSuffix(name, "."+domainName) {
+		withoutSuffix := strings.TrimSuffix(name, "."+domainName)
+		return !strings.Contains(withoutSuffix, ".")
+	}
+
+	return false
+}
+
 func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Authoritative = true
 
-	// Log request and target IP
-	log.Printf("Handling DNS request. Target IP: %s, Domain: %s", targetIP, domainName)
+	// Log the incoming request
+	log.Printf("Received DNS request from %s", w.RemoteAddr().String())
 
-	// Extract resolver and client IPs
-	resolverIP, _, _ := net.SplitHostPort(w.RemoteAddr().String())
-	clientIP := resolverIP
-	for _, extra := range r.Extra {
-		if opt, ok := extra.(*dns.OPT); ok {
-			for _, o := range opt.Option {
-				if e, ok := o.(*dns.EDNS0_SUBNET); ok {
-					clientIP = e.Address.String()
-					break
-				}
-			}
-		}
-	}
-
-	// Update the DNS cache
-	dnsCache.UpdateClientDNS(clientIP, resolverIP)
-
-	// Loop through questions and prepare an A record if applicable
 	for _, question := range r.Question {
-		log.Printf("Question received: %v", question.Name)
-		if question.Qtype == dns.TypeA && (question.Name == domainName || dns.IsSubDomain(wildcard, question.Name)) {
+		name := question.Name
+		log.Printf("Question: %s, Type: %d", name, question.Qtype)
+
+		// Domain kontrolü - isMatchingDomain fonksiyonunu kullan
+		if question.Qtype == dns.TypeA && isMatchingDomain(name) {
 			ip := net.ParseIP(targetIP)
 			if ip == nil {
-				log.Printf("Error: Unable to parse target IP %s", targetIP)
-				return
+				log.Printf("Error: Invalid target IP address: %s", targetIP)
+				continue
 			}
 
-			// Create the A record
-			aRecord := &dns.A{
+			rr := &dns.A{
 				Hdr: dns.RR_Header{
-					Name:   question.Name,
+					Name:   name,
 					Rrtype: dns.TypeA,
 					Class:  dns.ClassINET,
 					Ttl:    60,
 				},
 				A: ip,
 			}
-			m.Answer = append(m.Answer, aRecord)
-			log.Printf("Added A record for %s with IP %s", question.Name, targetIP)
+			m.Answer = append(m.Answer, rr)
+			log.Printf("Added A record: %s -> %s", name, targetIP)
 		}
 	}
 
-	// Log the entire answer section for verification
-	log.Printf("Response Answer Section: %v", m.Answer)
+	// Extract client information
+	resolverIP, _, _ := net.SplitHostPort(w.RemoteAddr().String())
+	clientIP := resolverIP
 
-	// Write the response
+	// Update cache
+	dnsCache.UpdateClientDNS(clientIP, resolverIP)
+
+	// Log response
+	log.Printf("Sending response with %d answers", len(m.Answer))
 	if err := w.WriteMsg(m); err != nil {
 		log.Printf("Error writing DNS response: %v", err)
 	}
@@ -218,23 +225,19 @@ func GUIDRequestHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// Initialize the DNS server
-	dns.HandleFunc(".", DNSRequestHandler)
+	// DNS server
+	dns.HandleFunc(".", DNSRequestHandler) // Tüm domainleri yakala
 	server := &dns.Server{Addr: ":53", Net: "udp"}
+
+	log.Printf("Starting DNS server for domain: %s (wildcard: %s)", domainName, wildcard)
 	go func() {
 		if err := server.ListenAndServe(); err != nil {
-			log.Fatalf("Failed to set up the DNS server: %v", err)
+			log.Fatalf("Failed to start DNS server: %v", err)
 		}
 	}()
-	defer func(server *dns.Server) {
-		err := server.Shutdown()
-		if err != nil {
-			log.Fatalf("Failed to shut down the DNS server: %v", err)
-		}
-	}(server)
 
-	// Initialize the HTTP server
+	// HTTP server
 	http.HandleFunc("/", DNSMainHandler)
-	log.Printf("HTTP Server started on port %s", port)
+	log.Printf("Starting HTTP Server on port %s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
