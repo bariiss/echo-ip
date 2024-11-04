@@ -14,10 +14,12 @@ import (
 )
 
 var (
-	targetIP   string
-	port       string
-	domainName string
-	wildcard   string
+	targetIP  string
+	port      string
+	dnsDomain string // llll.ist
+	nsDomain1 string // ns1.il1.nl
+	nsDomain2 string // ns2.il1.nl
+	wildcard  string
 )
 
 type ClientDNSInfo struct {
@@ -38,19 +40,31 @@ var dnsCache = &DNSCache{
 func init() {
 	targetIP = os.Getenv("ECHO_IP_TARGET_IP")
 	port = os.Getenv("ECHO_IP_PORT")
-	domainName = os.Getenv("ECHO_IP_DOMAIN")
+	dnsDomain = os.Getenv("ECHO_IP_DNS_DOMAIN")
+	nsDomain1 = os.Getenv("ECHO_IP_NS_DOMAIN_1")
+	nsDomain2 = os.Getenv("ECHO_IP_NS_DOMAIN_2")
 
-	if !strings.HasSuffix(domainName, ".") {
-		domainName = domainName + "."
+	if !strings.HasSuffix(dnsDomain, ".") {
+		dnsDomain = dnsDomain + "."
 	}
 
-	wildcard = "*." + domainName
+	wildcard = "*." + dnsDomain
 
-	if targetIP == "" || port == "" || domainName == "" {
+	// Validate required environment variables
+	if targetIP == "" || port == "" || dnsDomain == "" || nsDomain1 == "" || nsDomain2 == "" {
 		log.Fatal("Required environment variables are not set")
 	}
 
-	log.Printf("Initialized with Target IP: %s, Domain: %s, Wildcard: %s", targetIP, domainName, wildcard)
+	// Add trailing dots to NS domains if missing
+	if !strings.HasSuffix(nsDomain1, ".") {
+		nsDomain1 = nsDomain1 + "."
+	}
+	if !strings.HasSuffix(nsDomain2, ".") {
+		nsDomain2 = nsDomain2 + "."
+	}
+
+	log.Printf("Initialized with Target IP: %s, DNS Domain: %s, NS1: %s, NS2: %s",
+		targetIP, dnsDomain, nsDomain1, nsDomain2)
 
 	go cleanupCache()
 }
@@ -104,19 +118,13 @@ func isMatchingDomain(name string) bool {
 	}
 
 	// Root domain match
-	if name == domainName {
+	if name == dnsDomain {
 		log.Printf("Root domain match: %s", name)
 		return true
 	}
 
-	// Nameserver domain match
-	if name == "ns1."+domainName || name == "ns2."+domainName {
-		log.Printf("Nameserver domain match: %s", name)
-		return true
-	}
-
 	// Check for edns subdomain
-	ednsPrefix := "edns." + domainName
+	ednsPrefix := "edns." + dnsDomain
 	if name == ednsPrefix || strings.HasSuffix(name, "."+ednsPrefix) {
 		withoutSuffix := strings.TrimSuffix(name, "."+ednsPrefix)
 		// Allow exact match or direct subdomains only for edns
@@ -142,16 +150,16 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 		switch question.Qtype {
 		case dns.TypeSOA:
-			// SOA kaydı için
-			if name == domainName {
+			if name == dnsDomain {
 				soa := &dns.SOA{
 					Hdr: dns.RR_Header{
-						Name:   domainName,
+						Name:   dnsDomain,
 						Rrtype: dns.TypeSOA,
 						Class:  dns.ClassINET,
 						Ttl:    3600,
 					},
-					Ns:      "ns1." + domainName,
+					Ns:      nsDomain1,
+					Mbox:    "hostmaster." + dnsDomain,
 					Serial:  uint32(time.Now().Unix()),
 					Refresh: 3600,
 					Retry:   900,
@@ -163,32 +171,30 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 			}
 
 		case dns.TypeNS:
-			// NS kayıtları için
-			if name == domainName {
+			if name == dnsDomain {
 				ns1 := &dns.NS{
 					Hdr: dns.RR_Header{
-						Name:   domainName,
+						Name:   dnsDomain,
 						Rrtype: dns.TypeNS,
 						Class:  dns.ClassINET,
 						Ttl:    3600,
 					},
-					Ns: "ns1." + domainName,
+					Ns: nsDomain1,
 				}
 				ns2 := &dns.NS{
 					Hdr: dns.RR_Header{
-						Name:   domainName,
+						Name:   dnsDomain,
 						Rrtype: dns.TypeNS,
 						Class:  dns.ClassINET,
 						Ttl:    3600,
 					},
-					Ns: "ns2." + domainName,
+					Ns: nsDomain2,
 				}
 				m.Answer = append(m.Answer, ns1, ns2)
 				log.Printf("Added NS records for %s", name)
 			}
 
 		case dns.TypeA:
-			// A kayıtları için
 			if isMatchingDomain(name) {
 				ip := net.ParseIP(targetIP)
 				if ip == nil {
@@ -207,20 +213,6 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 				}
 				m.Answer = append(m.Answer, rr)
 				log.Printf("Added A record: %s -> %s", name, targetIP)
-
-				// NS sunucuları için A kayıtları
-				if name == "ns1."+domainName || name == "ns2."+domainName {
-					nsRecord := &dns.A{
-						Hdr: dns.RR_Header{
-							Name:   name,
-							Rrtype: dns.TypeA,
-							Class:  dns.ClassINET,
-							Ttl:    3600,
-						},
-						A: ip,
-					}
-					m.Answer = append(m.Answer, nsRecord)
-				}
 			}
 		}
 	}
@@ -257,7 +249,7 @@ func DNSMainHandler(w http.ResponseWriter, r *http.Request) {
 				dnsInfo.SecondaryDNS)
 
 			guid := u.GenerateGUID()
-			redirectURL := fmt.Sprintf("https://%s.%s", guid, domainName)
+			redirectURL := fmt.Sprintf("https://%s.edns.%s", guid, dnsDomain)
 			response += fmt.Sprintf("Generated GUID: %s\nRedirect URL: %s", guid, redirectURL)
 
 			_, err := fmt.Fprint(w, response)
@@ -267,7 +259,7 @@ func DNSMainHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// If no DNS info is available, just generate GUID and redirect
 			guid := u.GenerateGUID()
-			redirectURL := fmt.Sprintf("https://%s.%s", guid, domainName)
+			redirectURL := fmt.Sprintf("https://%s.edns.%s", guid, dnsDomain)
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 		}
 		return
@@ -296,7 +288,7 @@ func GUIDRequestHandler(w http.ResponseWriter, r *http.Request) {
 			dnsInfo.SecondaryDNS)
 	}
 
-	redirectURL := fmt.Sprintf("https://%s.%s", guid, domainName)
+	redirectURL := fmt.Sprintf("https://%s.edns.%s", guid, dnsDomain)
 	response += fmt.Sprintf("Redirect URL: %s", redirectURL)
 
 	_, err := fmt.Fprint(w, response)
@@ -310,7 +302,7 @@ func main() {
 	dns.HandleFunc(".", DNSRequestHandler) // Tüm domainleri yakala
 	server := &dns.Server{Addr: ":53", Net: "udp"}
 
-	log.Printf("Starting DNS server for domain: %s (wildcard: %s)", domainName, wildcard)
+	log.Printf("Starting DNS server for domain: %s (wildcard: %s)", dnsDomain, wildcard)
 	go func() {
 		if err := server.ListenAndServe(); err != nil {
 			log.Fatalf("Failed to start DNS server: %v", err)
