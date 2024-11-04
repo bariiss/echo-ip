@@ -97,11 +97,10 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m.SetReply(r)
 	m.Authoritative = true
 
-	// Log and store the resolver IP address
-	resolverIP, _, _ := net.SplitHostPort(w.RemoteAddr().String())
-	log.Printf("DNS Request from resolver IP: %s", resolverIP)
+	// Log target IP and request details for debugging
+	log.Printf("Handling DNS request. Target IP: %s, Domain: %s", targetIP, domainName)
 
-	// Extract client IP from EDNS0 Client Subnet if available
+	resolverIP, _, _ := net.SplitHostPort(w.RemoteAddr().String())
 	clientIP := resolverIP
 	for _, extra := range r.Extra {
 		if opt, ok := extra.(*dns.OPT); ok {
@@ -114,11 +113,16 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
-	// Update DNS cache with resolver information
 	dnsCache.UpdateClientDNS(clientIP, resolverIP)
 
 	for _, question := range r.Question {
+		log.Printf("Question received: %v", question.Name)
 		if question.Qtype == dns.TypeA && (question.Name == domainName || dns.IsSubDomain(wildcard, question.Name)) {
+			ip := net.ParseIP(targetIP)
+			if ip == nil {
+				log.Printf("Error: Unable to parse target IP %s", targetIP)
+				return
+			}
 			aRecord := &dns.A{
 				Hdr: dns.RR_Header{
 					Name:   question.Name,
@@ -126,15 +130,15 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 					Class:  dns.ClassINET,
 					Ttl:    60,
 				},
-				A: net.ParseIP(targetIP),
+				A: ip,
 			}
 			m.Answer = append(m.Answer, aRecord)
-			log.Printf("A record for %s requested", question.Name)
+			log.Printf("Added A record for %s with IP %s", question.Name, targetIP)
 		}
 	}
 
 	if err := w.WriteMsg(m); err != nil {
-		log.Printf("Error: %v", err)
+		log.Printf("Error writing DNS response: %v", err)
 	}
 }
 
@@ -142,7 +146,7 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 func DNSMainHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
 		// Get client IP
-		clientIP := getClientIP(r)
+		clientIP := u.GetClientIP(r)
 
 		// Get DNS information
 		dnsInfo := dnsCache.GetClientDNSInfo(clientIP)
@@ -182,7 +186,7 @@ func GUIDRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientIP := getClientIP(r)
+	clientIP := u.GetClientIP(r)
 	dnsInfo := dnsCache.GetClientDNSInfo(clientIP)
 
 	w.Header().Set("Content-Type", "text/plain")
@@ -202,23 +206,6 @@ func GUIDRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-}
-
-// getClientIP extracts the real client IP from the request
-func getClientIP(r *http.Request) string {
-	// Check X-Real-IP header
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-
-	// Check X-Forwarded-For header
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return strings.Split(ip, ",")[0]
-	}
-
-	// Fall back to RemoteAddr
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ip
 }
 
 func main() {
