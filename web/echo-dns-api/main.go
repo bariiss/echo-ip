@@ -98,15 +98,27 @@ func cleanupCache() {
 }
 
 func isMatchingDomain(name string) bool {
+	// Normalize input domain
+	if !strings.HasSuffix(name, ".") {
+		name = name + "."
+	}
+
+	// Exact domain match
 	if name == domainName {
+		log.Printf("Exact domain match: %s == %s", name, domainName)
 		return true
 	}
 
+	// Subdomain match check
 	if strings.HasSuffix(name, "."+domainName) {
 		withoutSuffix := strings.TrimSuffix(name, "."+domainName)
-		return !strings.Contains(withoutSuffix, ".")
+		// Make sure it's a direct subdomain
+		isValidSubdomain := !strings.Contains(withoutSuffix, ".")
+		log.Printf("Subdomain check: %s, valid: %v", withoutSuffix, isValidSubdomain)
+		return isValidSubdomain
 	}
 
+	log.Printf("No match for domain: %s", name)
 	return false
 }
 
@@ -115,15 +127,19 @@ func DNSRequestHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m.SetReply(r)
 	m.Authoritative = true
 
-	// Log the incoming request
 	log.Printf("Received DNS request from %s", w.RemoteAddr().String())
 
 	for _, question := range r.Question {
 		name := question.Name
 		log.Printf("Question: %s, Type: %d", name, question.Qtype)
 
-		// Domain kontrolü - isMatchingDomain fonksiyonunu kullan
-		if question.Qtype == dns.TypeA && isMatchingDomain(name) {
+		if question.Qtype == dns.TypeA {
+			// Domain kontrolü
+			if !isMatchingDomain(name) {
+				log.Printf("Domain not matching our criteria: %s", name)
+				continue
+			}
+
 			ip := net.ParseIP(targetIP)
 			if ip == nil {
 				log.Printf("Error: Invalid target IP address: %s", targetIP)
