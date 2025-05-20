@@ -1,5 +1,5 @@
 # Use an official Golang image as the build environment
-FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-ip-api
+FROM --platform=$BUILDPLATFORM golang:1.24.3 AS builder-ip-api
 ARG TARGETARCH
 ARG TARGETOS
 
@@ -37,7 +37,7 @@ EXPOSE 8745
 # Run the application
 CMD ["./echo-ip-api"]
 
-FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-dns-api
+FROM --platform=$BUILDPLATFORM golang:1.24.3 AS builder-dns-api
 ARG TARGETARCH
 ARG TARGETOS
 
@@ -74,7 +74,7 @@ EXPOSE 8080
 CMD ["./echo-dns-api"]
 
 # Use an official Golang image as the build environment
-FROM --platform=$BUILDPLATFORM golang:1.23 AS builder-client
+FROM --platform=$BUILDPLATFORM golang:1.24.3 AS builder-client
 ARG TARGETARCH
 ARG TARGETOS
 
@@ -92,7 +92,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o echo-ip ./cmd/echo-ip
 
 # Final stage: Run the binary in a minimal image
-FROM alpine:3.20.3 AS final-client
+FROM alpine:3.21.3 AS final-client
 
 # Set the working directory
 WORKDIR /app

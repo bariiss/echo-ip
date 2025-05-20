@@ -1,6 +1,6 @@
 module github.com/bariiss/echo-ip
 
-go 1.23.2
+go 1.24.3
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
