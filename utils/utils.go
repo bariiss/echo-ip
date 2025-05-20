@@ -5,9 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	c "github.com/bariiss/echo-ip/cache"
-	s "github.com/bariiss/echo-ip/structs"
-	g "github.com/oschwald/geoip2-golang"
 	"io"
 	"log"
 	"net"
@@ -15,6 +12,10 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	c "github.com/bariiss/echo-ip/cache"
+	s "github.com/bariiss/echo-ip/structs"
+	g "github.com/oschwald/geoip2-golang"
 )
 
 // GetClientIP retrieves the client's IP address from the request
@@ -37,18 +38,27 @@ func GetClientIP(r *http.Request) string {
 }
 
 // FetchGeoInfo retrieves the geo information for the given IP address
+// The old function signature is kept for backward compatibility, but cityDB and asnDB parameters will be ignored
 func FetchGeoInfo(ip string, cityDB, asnDB *g.Reader) (*s.GeoInfo, error) {
+	return FetchGeoInfoFromMemory(ip)
+}
+
+// FetchGeoInfoFromMemory retrieves the geo information for the given IP address using the in-memory DB
+func FetchGeoInfoFromMemory(ip string) (*s.GeoInfo, error) {
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		return nil, fmt.Errorf("invalid IP address")
 	}
 
-	cityRecord, err := cityDB.City(parsedIP)
+	// Get the database instance from our singleton
+	db := GetGeoDB()
+
+	cityRecord, err := db.CityDB.City(parsedIP)
 	if err != nil {
 		return nil, err
 	}
 
-	asnRecord, err := asnDB.ASN(parsedIP)
+	asnRecord, err := db.ASNDB.ASN(parsedIP)
 	if err != nil {
 		return nil, err
 	}
